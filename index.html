@@ -632,7 +632,7 @@ function setSky(id){skytintEl.style.background=SKY[id]||SKY.overview;}
 
 <script>
 /* narration / audio */
-const RECORDINGS={0:"audio/1.mp3",1:"audio/2.mp3",2:"audio/3.mp3",3:"audio/4.mp3",4:"audio/5.mp3",5:"audio/6.mp3",6:"audio/7.mp3",7:"audio/8.mp3",8:"audio/9.mp3"};
+const RECORDINGS={0:"1.mp3",1:"2.mp3",2:"3.mp3",3:"4.mp3",4:"5.mp3",5:"6.mp3",6:"7.mp3",7:"8.mp3",8:"9.mp3"};
 let audioOn=false, audioPlaying=true, currentAudio=null, synthVoice=null, narrToken=0, fallbackTimer=null, narrating=false;
 const audiobtn=document.getElementById('audiobtn');
 function pickVoice(){const v=speechSynthesis.getVoices();synthVoice=v.find(x=>/en[-_]US/i.test(x.lang)&&/male|daniel|alex|fred/i.test(x.name))||v.find(x=>/en/i.test(x.lang))||v[0];}
