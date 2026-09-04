@@ -1,0 +1,821 @@
+<title>Follow the Drop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  /* follow the drop */
+  :root{
+    --ink:#eef5f8; --mist:#9db4c0; --cyan:#5fc7d9; --sun:#f2b45a; --alarm:#e8674c;
+    --line:rgba(157,180,192,.16); --panel:rgba(6,17,28,.52);
+    --serif:"Fraunces",Georgia,serif; --sans:"Instrument Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#04101b;color:var(--ink);font-family:var(--sans);line-height:1.6;overflow:hidden;height:100vh;-webkit-font-smoothing:antialiased}
+
+  /* world + atmosphere layers */
+  #stage{position:fixed;inset:0;z-index:0;overflow:hidden;background:#061726}
+  #world{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+  #world svg{display:block}
+  #skytint{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;mix-blend-mode:soft-light;transition:background 1.3s ease,opacity 1.3s ease}
+  #fx{position:fixed;inset:0;z-index:2;pointer-events:none}
+  #scrim{position:fixed;inset:0;z-index:3;pointer-events:none;transition:background 1.2s ease;
+    background:radial-gradient(120% 120% at 30% 45%, transparent 45%, rgba(3,10,17,.5) 100%)}
+  #dropcv{position:fixed;inset:0;z-index:5;pointer-events:none}
+  #grain{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:.035;mix-blend-mode:soft-light;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+  /* deck of slides */
+  #deck{position:fixed;inset:0;z-index:6;pointer-events:none}
+  body.moving .panel{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  body.moving #grain{opacity:0}
+  #grain{transition:opacity .5s ease}
+  .slide{position:absolute;inset:0;display:flex;align-items:center;
+    padding:12vh clamp(20px,6vw,110px) 16vh;
+    opacity:0;visibility:hidden;transition:opacity .8s ease,visibility .8s}
+  .slide.active{opacity:1;visibility:visible}
+  .slide[data-align="right"]{justify-content:flex-end}
+  .slide[data-align="center"]{justify-content:center;text-align:center}
+  .slide.active .panel{pointer-events:auto}
+
+  .panel{max-width:25rem;background:var(--panel);
+    backdrop-filter:blur(7px) saturate(120%);-webkit-backdrop-filter:blur(7px) saturate(120%);
+    border:1px solid var(--line);border-radius:18px;padding:clamp(17px,2.4vw,28px);
+    box-shadow:0 30px 90px -40px rgba(0,0,0,.7);
+    transition:max-width .55s ease,padding .5s ease}
+  .slide[data-align="center"] .panel{background:transparent;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+
+  /* staggered entrance for panel children */
+  .panel .eyebrow,.panel .body,.panel .mintoggle{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .7s cubic-bezier(.2,.75,.2,1)}
+  .slide.active .panel .eyebrow{opacity:1;transform:none;transition-delay:.12s}
+  .slide.active .panel .body{opacity:1;transform:none;transition-delay:.5s}
+  .slide.active .panel .mintoggle{opacity:1;transform:none;transition-delay:.64s}
+  .panel h2 .word{display:inline-block;opacity:0;transform:translateY(22px) rotate(2deg);transition:opacity .5s ease,transform .6s cubic-bezier(.2,.85,.25,1)}
+  .slide.active .panel h2 .word{opacity:1;transform:none}
+
+  /* collapsible panel */
+  .panel .body{overflow:hidden;transition:max-height .55s ease,opacity .4s ease,margin-top .5s ease;max-height:660px}
+  .panel.min{max-width:20rem;padding-bottom:clamp(14px,1.8vw,20px)}
+  .panel.min .body{max-height:0;opacity:0;margin-top:-.4rem;pointer-events:none}
+  .panel h2{transition:font-size .45s ease,opacity .6s ease,transform .7s cubic-bezier(.2,.75,.2,1)}
+  .panel.min h2{font-size:clamp(1.4rem,3.6vw,2rem);margin-bottom:.2rem}
+  .panel.min{cursor:pointer}
+  .mintoggle{margin-top:1rem;font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);background:transparent;border:1px solid var(--line);border-radius:999px;padding:.45em .95em;cursor:pointer;transition:color .2s,border-color .2s}
+  .mintoggle:hover{color:var(--ink);border-color:var(--accent,var(--cyan))}
+  .mintoggle::after{content:"Minimize ▾"}
+  .panel.min .mintoggle::after{content:"Read more ▸"}
+
+  .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.26em;text-transform:uppercase;color:var(--accent,var(--cyan));display:flex;align-items:center;gap:.7em;margin-bottom:1rem;justify-content:inherit}
+  .eyebrow .rule{height:1px;flex:1;max-width:120px;background:linear-gradient(90deg,var(--accent,var(--cyan)),transparent);opacity:.55}
+  .slide[data-align="center"] .eyebrow{justify-content:center}
+  .panel h2{font-family:var(--serif);font-weight:900;font-size:clamp(1.9rem,4.4vw,3.1rem);line-height:1;letter-spacing:-.015em;text-wrap:balance;margin-bottom:.85rem}
+  .panel h2 em{font-style:italic;font-weight:400;color:var(--accent,var(--cyan))}
+  .lede{font-size:clamp(1rem,1.4vw,1.15rem);color:#dce9ef;max-width:34ch}
+  .slide[data-align="center"] .lede{margin-left:auto;margin-right:auto}
+  .lede+.lede{margin-top:.8rem}
+  .stat-row{display:flex;flex-wrap:wrap;gap:9px;margin-top:1.5rem;justify-content:inherit}
+  .slide[data-align="center"] .stat-row{justify-content:center}
+  .chip{font-family:var(--mono);font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:.5em .9em;color:var(--mist);display:flex;gap:.5em;align-items:baseline}
+  .chip b{font-family:var(--sans);color:var(--ink);font-size:.84rem;font-weight:600}
+  .explore{margin-top:1.5rem;display:inline-flex;align-items:center;gap:.55em;font-family:var(--mono);font-size:.76rem;letter-spacing:.05em;color:var(--ink);background:transparent;border:1px solid var(--accent,var(--cyan));border-radius:999px;padding:.65em 1.1em;cursor:pointer;transition:background .25s,transform .25s}
+  .explore:hover,.explore:focus-visible{background:color-mix(in srgb,var(--accent,var(--cyan)) 18%,transparent);transform:translateY(-2px)}
+  .explore .arrow{transition:transform .25s}
+  .explore:hover .arrow{transform:translateX(3px)}
+
+  /* intro */
+  #intro{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8vw 24px;
+    background:radial-gradient(125% 110% at 50% 30%, rgba(18,48,73,.70) 0%, rgba(8,24,42,.86) 55%, rgba(4,16,26,.94) 100%);
+    backdrop-filter:blur(7px) brightness(.7) saturate(1.1);-webkit-backdrop-filter:blur(7px) brightness(.7) saturate(1.1);
+    transition:opacity 1.1s ease,visibility 1.1s}
+  #intro.gone{opacity:0;visibility:hidden}
+  #intro .kicker{font-family:var(--mono);letter-spacing:.34em;text-transform:uppercase;font-size:.7rem;color:var(--cyan);margin-bottom:1.3rem}
+  #intro h1{font-family:var(--serif);font-weight:900;font-size:clamp(3rem,12vw,7.4rem);line-height:.9;letter-spacing:-.02em;text-wrap:balance}
+  #intro h1 em{font-style:italic;font-weight:400;color:var(--cyan)}
+  #intro p{max-width:40ch;color:var(--mist);margin:1.5rem auto 2.4rem;font-size:1.04rem}
+  .hero-drop{position:relative;display:grid;place-items:center;width:56px;height:56px;margin-bottom:1.8rem}
+  .drop-mark{width:54px;height:54px;animation:floaty 4s ease-in-out infinite}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .drop-ripple{position:absolute;width:52px;height:52px;border-radius:50%;border:1px solid rgba(95,199,217,.5)}
+  .drop-ripple{animation:ripplepulse 2.8s ease-out infinite}
+  .drop-ripple.d2{animation-delay:1.4s}
+  @keyframes ripplepulse{0%{transform:scale(.5);opacity:.7}100%{transform:scale(2.7);opacity:0}}
+  .begin-wrap{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  .begin{font-family:var(--sans);font-weight:600;font-size:1rem;color:#04101b;background:var(--sun);border:none;border-radius:999px;padding:1em 2em;cursor:pointer;display:inline-flex;align-items:center;gap:.7em;box-shadow:0 10px 40px -12px rgba(242,180,90,.7);transition:transform .25s,box-shadow .25s}
+  .begin:hover,.begin:focus-visible{transform:translateY(-3px);box-shadow:0 16px 50px -12px rgba(242,180,90,.85)}
+  .begin.silent{background:transparent;color:var(--mist);box-shadow:none;border:1px solid var(--line);font-weight:500}
+
+  /* hud */
+  #hud{position:fixed;z-index:30;right:clamp(12px,2.3vw,30px);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:11px;align-items:center;opacity:0;transition:opacity .6s}
+  #hud.show{opacity:1}
+  .dot{width:9px;height:9px;border-radius:50%;border:1px solid var(--mist);background:transparent;cursor:pointer;padding:0;transition:all .3s;opacity:.5}
+  .dot.active{background:var(--cyan);border-color:var(--cyan);opacity:1;transform:scale(1.4);box-shadow:0 0 12px var(--cyan)}
+  #topbar{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--cyan),var(--sun));z-index:35;transition:width 1s cubic-bezier(.66,0,.32,1);opacity:0}
+  #topbar.show{opacity:1}
+  #audiobtn{position:fixed;z-index:36;left:clamp(12px,2.3vw,26px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:none;align-items:center;gap:.55em;font-family:var(--mono);font-size:.7rem;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:.55em 1em;cursor:pointer;backdrop-filter:blur(8px)}
+  #audiobtn.show{display:inline-flex}
+  #audiobtn .eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+  #audiobtn .eq i{width:2.5px;background:var(--cyan);height:4px;border-radius:2px;animation:eq 1s ease-in-out infinite}
+  #audiobtn .eq i:nth-child(2){animation-delay:.2s}#audiobtn .eq i:nth-child(3){animation-delay:.4s}#audiobtn .eq i:nth-child(4){animation-delay:.15s}
+  #audiobtn.muted .eq i{animation:none;height:4px;background:var(--mist)}
+  @keyframes eq{0%,100%{height:4px}50%{height:12px}}
+
+  /* scroll / swipe cue */
+  #cue{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 182px);transform:translateX(-50%);z-index:33;
+    display:none;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
+    color:var(--mist);font-family:var(--mono);font-size:.62rem;letter-spacing:.2em;text-transform:uppercase}
+  #cue.show{display:flex}
+  #cue .chev{font-size:1.5rem;line-height:.6;color:var(--ink);animation:bob 1.9s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0);opacity:.7}50%{transform:translateY(6px);opacity:1}}
+
+  #caption{position:fixed;z-index:32;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);max-width:min(90vw,42rem);width:max-content;background:rgba(4,14,24,.72);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;padding:.7em 1.1em;text-align:center;font-size:.94rem;color:#e7f2f6;opacity:0;transition:opacity .5s;pointer-events:none}
+  #caption.show{opacity:1}
+  #caption .mic{color:var(--cyan);font-family:var(--mono);font-size:.64rem;letter-spacing:.2em;text-transform:uppercase;display:block;margin-bottom:.35em;opacity:.8}
+
+  /* modal */
+  #modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(2,8,14,.72);backdrop-filter:blur(6px)}
+  #modal.open{display:flex}
+  .card{max-width:34rem;width:100%;background:linear-gradient(180deg,#0c2236,#071726);border:1px solid var(--line);border-radius:22px;padding:clamp(24px,4vw,40px);position:relative;max-height:88vh;overflow-y:auto;box-shadow:0 40px 120px -30px rgba(0,0,0,.8)}
+  .card .close{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;font-size:1.1rem}
+  .card .k{font-family:var(--mono);font-size:.7rem;letter-spacing:.26em;text-transform:uppercase;color:var(--accent,var(--cyan));margin-bottom:.7rem}
+  .card h3{font-family:var(--serif);font-weight:900;font-size:clamp(1.7rem,4vw,2.3rem);line-height:1;margin-bottom:.4rem}
+  .card .term{font-style:italic;color:var(--mist);margin-bottom:1.3rem;font-family:var(--serif)}
+  .datagrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:1.3rem}
+  .datagrid div{background:#08192a;padding:1rem}
+  .datagrid .lab{font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist);margin-bottom:.4rem}
+  .datagrid .val{font-family:var(--serif);font-size:1.28rem;font-weight:600;font-variant-numeric:tabular-nums}
+  .card p{color:#d3e3ea;font-size:.97rem}.card p+p{margin-top:.85rem}
+
+  .toggle-wrap{display:flex;align-items:center;gap:14px;margin-top:1.5rem;flex-wrap:wrap;justify-content:inherit}
+  .switch{position:relative;width:70px;height:34px;border-radius:999px;background:#0e2c44;border:1px solid var(--line);cursor:pointer;flex:0 0 auto}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:var(--cyan);transition:transform .3s,background .3s}
+  .switch[aria-checked="true"]{background:#3a1512;border-color:rgba(232,103,76,.5)}
+  .switch[aria-checked="true"]::after{transform:translateX(36px);background:var(--alarm)}
+  .switch-label{font-family:var(--mono);font-size:.76rem;color:var(--mist)}
+  .switch-label b{color:var(--ink);font-family:var(--sans)}
+
+  /* world animations */
+  @keyframes rayspin{to{transform:rotate(360deg)}}
+  @keyframes drift{0%,100%{transform:translateX(0)}50%{transform:translateX(34px)}}
+  @keyframes drift2{0%,100%{transform:translateX(0)}50%{transform:translateX(-26px)}}
+  @keyframes rain{0%{transform:translateY(-10px);opacity:0}12%{opacity:.9}100%{transform:translateY(150px);opacity:0}}
+  @keyframes rise{0%{transform:translateY(0);opacity:0}18%{opacity:.55}100%{transform:translateY(-120px);opacity:0}}
+  @keyframes shimmer{to{stroke-dashoffset:-60}}
+  @keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-18px)}}
+  .ray-grp{transform-origin:2060px 250px;animation:rayspin 90s linear infinite}
+  .cloud-a{animation:drift 14s ease-in-out infinite}
+  .cloud-b{animation:drift2 18s ease-in-out infinite}
+  .rain-l{animation:rain 1.4s linear infinite}
+  .vapor{animation:rise 5s ease-in infinite}
+  .river-hi{stroke-dasharray:10 12;animation:shimmer 2.2s linear infinite}
+  .wave-l{animation:wave 6s ease-in-out infinite}
+  @keyframes raypulse{0%,100%{opacity:.06}50%{opacity:.15}}
+  @keyframes drift3{0%,100%{transform:translateX(0)}50%{transform:translateX(22px)}}
+  @keyframes glint{0%,100%{opacity:.10}50%{opacity:.22}}
+  .godray{animation:raypulse 8s ease-in-out infinite}
+  .cloud-c{animation:drift3 28s ease-in-out infinite}
+  .glint{animation:glint 4.5s ease-in-out infinite}
+  .caustics{animation:wave 7.5s ease-in-out infinite}
+  .birds{animation:drift3 30s ease-in-out infinite}
+  @keyframes snowfall{0%{transform:translateY(-6px);opacity:0}15%{opacity:.9}100%{transform:translateY(118px);opacity:0}}
+  .snowflake{animation:snowfall 4.6s linear infinite}
+  .panel h2{position:relative}
+  .panel h2::after{content:"";position:absolute;left:0;bottom:-.16em;height:3px;width:0;border-radius:2px;background:var(--accent,var(--cyan));opacity:.9;transition:width .7s cubic-bezier(.2,.75,.2,1) .55s}
+  .slide.active .panel h2::after{width:2.4em}
+  .slide[data-align="center"] .panel h2::after{left:50%;transform:translateX(-50%)}
+
+  @media (max-width:640px){
+    .slide{padding:9vh 16px 26vh;align-items:flex-end}
+    .slide[data-align="right"],.slide[data-align="left"]{justify-content:center}
+    .panel{max-width:100%}
+    .panel h2{font-size:clamp(1.9rem,8vw,2.6rem)}
+    #hud,#cue,#cue.show{display:none}
+    #caption{max-width:94vw;font-size:.86rem}
+    .datagrid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ray-grp,.cloud-a,.cloud-b,.rain-l,.vapor,.river-hi,.wave-l,.drop-mark,#cue .chev{animation:none}
+    #world{transition:none!important}
+    .slide,.panel>*{transition:opacity .3s!important;transform:none!important}
+  }
+</style>
+
+<div id="stage"><div id="world"></div></div>
+<div id="skytint"></div>
+<canvas id="fx"></canvas>
+<div id="scrim"></div>
+<canvas id="dropcv"></canvas>
+<div id="grain"></div>
+
+<!-- INTRO -->
+<div id="intro">
+  <div class="hero-drop"><span class="drop-ripple"></span><span class="drop-ripple d2"></span>
+    <svg class="drop-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2C12 2 4 11 4 15.5C4 19.6 7.6 22 12 22C16.4 22 20 19.6 20 15.5C20 11 12 2 12 2Z" stroke="#5fc7d9" stroke-width="1.4" fill="rgba(95,199,217,.14)"/></svg>
+  </div>
+  <div class="kicker">The Hydrologic Cycle</div>
+  <h1>Follow the <em>Drop</em></h1>
+  <p>One world. One water molecule. Press start, turn your sound on, and sit back — it narrates itself and flows from stage to stage, all the way around the cycle.</p>
+  <div class="begin-wrap">
+    <button class="begin" id="beginBtn"><span aria-hidden="true">▶</span> Start the journey</button>
+  </div>
+</div>
+
+<nav id="hud" aria-label="Journey progress"></nav>
+<button id="audiobtn" aria-label="Toggle narration"><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="audiolabel">Playing</span></button>
+<div id="topbar"></div>
+
+<div id="deck"></div>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="card"><button class="close" id="modalClose" aria-label="Close">✕</button>
+    <div class="k" id="modalK"></div><h3 id="modalTitle"></h3><div class="term" id="modalTerm"></div>
+    <div class="datagrid" id="modalData"></div><div id="modalBody"></div></div>
+</div>
+
+<script>
+const WORLD_W=2400, WORLD_H=1200;
+</script>
+
+<script>
+/* the illustrated world (inline svg) */
+document.getElementById('world').innerHTML = `
+<svg width="${WORLD_W}" height="${WORLD_H}" viewBox="0 0 ${WORLD_W} ${WORLD_H}" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#0a2742"/><stop offset="55%" stop-color="#1c4a68"/><stop offset="100%" stop-color="#3f7f97"/>
+  </linearGradient>
+  <radialGradient id="sunbeam" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="rgba(255,228,170,.16)"/><stop offset="60%" stop-color="rgba(255,210,150,.05)"/><stop offset="100%" stop-color="rgba(255,210,150,0)"/></radialGradient>
+  <radialGradient id="sunG" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffe6ad"/><stop offset="55%" stop-color="#f2b45a"/><stop offset="100%" stop-color="#e8894a"/></radialGradient>
+  <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="rgba(242,180,90,.6)"/><stop offset="100%" stop-color="rgba(242,180,90,0)"/></radialGradient>
+  <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f93b4"/><stop offset="100%" stop-color="#0e415a"/></linearGradient>
+  <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c8f63"/><stop offset="100%" stop-color="#356b49"/></linearGradient>
+  <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d6f7d"/><stop offset="100%" stop-color="#2f5866"/></linearGradient>
+  <linearGradient id="earth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d4b2f"/><stop offset="45%" stop-color="#513622"/><stop offset="100%" stop-color="#382415"/></linearGradient>
+  <linearGradient id="aquifer" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8fb0"/><stop offset="100%" stop-color="#27607a"/></linearGradient>
+  <linearGradient id="river" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fc9e6"/><stop offset="100%" stop-color="#3892b6"/></linearGradient>
+  <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6c7c88"/><stop offset="100%" stop-color="#42525d"/></linearGradient>
+  <linearGradient id="dam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4ccd1"/><stop offset="100%" stop-color="#7d868c"/></linearGradient>
+  <linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(190,216,229,0)"/><stop offset="100%" stop-color="rgba(190,216,229,.24)"/></linearGradient>
+ </defs>
+
+ <!-- SKY + warm sun-glow across it -->
+ <rect x="0" y="0" width="${WORLD_W}" height="820" fill="url(#sky)"/>
+ <ellipse cx="2060" cy="250" rx="1550" ry="1080" fill="url(#sunbeam)"/>
+
+ <!-- SUN + rays (upper right) -->
+ <circle cx="2060" cy="250" r="250" fill="url(#sunGlow)"/>
+ <g class="ray-grp" opacity=".6">
+   ${Array.from({length:16}).map((_,i)=>{const a=i*22.5*Math.PI/180;const x1=2060+Math.cos(a)*150,y1=250+Math.sin(a)*150,x2=2060+Math.cos(a)*225,y2=250+Math.sin(a)*225;return `<line x1="${x1.toFixed(0)}" y1="${y1.toFixed(0)}" x2="${x2.toFixed(0)}" y2="${y2.toFixed(0)}" stroke="#f2c46a" stroke-width="5" stroke-linecap="round"/>`}).join('')}
+ </g>
+ <g class="godray" fill="#ffe7b0" opacity=".1">
+  <path d="M2060 250 L2320 1010 L2170 1020 Z"/>
+  <path d="M2060 250 L1980 1020 L1820 1000 Z"/>
+  <path d="M2060 250 L2560 940 L2430 1020 Z"/>
+  <path d="M2060 250 L1660 980 L1540 890 Z"/>
+ </g>
+ <circle cx="2060" cy="250" r="95" fill="url(#sunG)"/>
+
+ <!-- parallax background clouds -->
+ <g class="cloud-c" fill="#c8d6df" opacity=".4">
+  <ellipse cx="640" cy="200" rx="150" ry="42"/><ellipse cx="800" cy="182" rx="105" ry="34"/>
+  <ellipse cx="1830" cy="150" rx="128" ry="38"/><ellipse cx="1960" cy="168" rx="90" ry="30"/>
+ </g>
+
+ <!-- distant range + horizon haze for depth -->
+ <path d="M0 700 L260 560 L470 660 L700 540 L980 660 L1300 600 L1760 680 L1760 820 L0 820 Z" fill="url(#hillFar)" opacity=".8"/>
+ <rect x="0" y="590" width="${WORLD_W}" height="140" fill="url(#haze)"/>
+
+ <!-- GLACIER MOUNTAIN (left) -->
+ <path d="M60 760 L340 300 L520 560 L470 560 L620 760 Z" fill="url(#rock)"/>
+ <path d="M340 300 L430 430 L392 452 L340 388 L300 452 L262 430 Z" fill="#eaf3f6"/>
+ <path d="M300 452 L340 388 L392 452 L430 500 L360 560 L280 520 Z" fill="#dbe9ee"/>
+ <g stroke="#c2d6dd" stroke-width="3" opacity=".7"><line x1="330" y1="470" x2="360" y2="520"/><line x1="380" y1="470" x2="356" y2="520"/></g>
+ <ellipse cx="352" cy="410" rx="130" ry="160" fill="rgba(232,246,251,.16)"/>
+ <!-- cloud snowing onto the peak — how water returns to the mountain top -->
+ <g class="cloud-a" opacity=".92"><ellipse cx="300" cy="228" rx="96" ry="32" fill="#dbe6ec"/><ellipse cx="362" cy="218" rx="66" ry="27" fill="#eef4f7"/><ellipse cx="248" cy="238" rx="54" ry="22" fill="#cddbe3"/></g>
+ <g fill="#eef8fc">
+  <circle class="snowflake" cx="278" cy="252" r="4" style="animation-delay:0s"/>
+  <circle class="snowflake" cx="316" cy="258" r="3.4" style="animation-delay:.7s"/>
+  <circle class="snowflake" cx="350" cy="250" r="4" style="animation-delay:1.5s"/>
+  <circle class="snowflake" cx="298" cy="264" r="3" style="animation-delay:2.1s"/>
+  <circle class="snowflake" cx="338" cy="266" r="3.6" style="animation-delay:2.9s"/>
+  <circle class="snowflake" cx="262" cy="260" r="3" style="animation-delay:3.5s"/>
+ </g>
+
+ <!-- CLOUDS (centre) -->
+ <g class="cloud-a">
+  <ellipse cx="1040" cy="250" rx="150" ry="66" fill="#e7eef2"/>
+  <ellipse cx="1160" cy="222" rx="120" ry="70" fill="#f3f8fa"/>
+  <ellipse cx="1250" cy="262" rx="110" ry="56" fill="#d7e3ea"/>
+  <ellipse cx="1120" cy="286" rx="170" ry="52" fill="#cddbe3"/>
+ </g>
+ <g class="cloud-b" opacity=".85">
+  <ellipse cx="1470" cy="200" rx="110" ry="48" fill="#dbe6ec"/>
+  <ellipse cx="1560" cy="220" rx="90" ry="42" fill="#eef4f7"/>
+ </g>
+ <!-- birds drifting in the sky -->
+ <g class="birds" fill="none" stroke="#123049" stroke-width="4" stroke-linecap="round" opacity=".4">
+  <path d="M700 360 q15 -12 30 0 q15 -12 30 0"/>
+  <path d="M820 392 q12 -10 24 0 q12 -10 24 0"/>
+  <path d="M636 408 q10 -8 20 0 q10 -8 20 0"/>
+ </g>
+
+ <!-- RAIN under centre cloud -->
+ <g stroke="#bfe4f2" stroke-width="4" stroke-linecap="round">
+  ${Array.from({length:16}).map((_,i)=>{const x=980+i*20+(i%3)*6;const d=(i%5)*0.22;return `<line class="rain-l" x1="${x}" y1="320" x2="${x-6}" y2="352" style="animation-delay:${d.toFixed(2)}s"/>`}).join('')}
+ </g>
+
+ <!-- EARTH cross-section -->
+ <rect x="0" y="640" width="${WORLD_W}" height="560" fill="url(#earth)"/>
+ <g fill="rgba(0,0,0,.10)">${Array.from({length:26}).map(()=>{const x=(Math.random()*2380).toFixed(0);const y=(756+Math.random()*150).toFixed(0);const r=(2+Math.random()*3).toFixed(1);return `<circle cx="${x}" cy="${y}" r="${r}"/>`}).join('')}</g>
+ <g stroke="rgba(0,0,0,.12)" stroke-width="2">
+  <line x1="0" y1="720" x2="2400" y2="720"/><line x1="0" y1="860" x2="2400" y2="860"/>
+ </g>
+ <!-- aquifer band -->
+ <rect x="0" y="930" width="${WORLD_W}" height="120" fill="url(#aquifer)" opacity=".9"/>
+ <g fill="#bfe4f2" opacity=".5">
+  ${Array.from({length:38}).map(()=>{const x=(Math.random()*2380).toFixed(0);const y=(940+Math.random()*100).toFixed(0);const r=(3+Math.random()*4).toFixed(1);return `<circle cx="${x}" cy="${y}" r="${r}"/>`}).join('')}
+ </g>
+ <text x="1360" y="1006" fill="rgba(207,228,242,.34)" font-family="IBM Plex Mono, monospace" font-size="30" letter-spacing="13" font-weight="500">AQUIFER</text>
+
+ <!-- HILLS / land surface -->
+ <path d="M120 700 L120 660 Q400 610 640 668 Q820 706 1000 650 Q1200 690 1360 656 Q1560 700 1740 690 L1740 740 L120 740 Z" fill="url(#hill)"/>
+ <g>${[300,420,540,880,1010,1330,1600].map((x,i)=>{const y=666-(i%2)*5;return `<g transform="translate(${x},${y})"><rect x="-3" y="-4" width="6" height="14" fill="#4a3420"/><path d="M0 -32 L15 -3 L-15 -3 Z" fill="#2f6b45"/><path d="M0 -21 L11 3 L-11 3 Z" fill="#398050"/></g>`}).join('')}</g>
+
+ <!-- WETLAND / spring -->
+ <ellipse cx="1180" cy="712" rx="120" ry="18" fill="#5fb6d6" opacity=".85"/>
+ <g fill="none" stroke="#cdeefb" stroke-width="2" opacity=".6">
+  <ellipse cx="1180" cy="712" rx="10" ry="3"><animate attributeName="rx" values="10;95" dur="3.4s" repeatCount="indefinite"/><animate attributeName="ry" values="3;15" dur="3.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".55;0" dur="3.4s" repeatCount="indefinite"/></ellipse>
+  <ellipse cx="1180" cy="712" rx="10" ry="3"><animate attributeName="rx" values="10;95" dur="3.4s" begin="1.7s" repeatCount="indefinite"/><animate attributeName="ry" values="3;15" dur="3.4s" begin="1.7s" repeatCount="indefinite"/><animate attributeName="opacity" values=".55;0" dur="3.4s" begin="1.7s" repeatCount="indefinite"/></ellipse>
+ </g>
+ <g stroke="#3f7d5a" stroke-width="4" stroke-linecap="round"><line x1="1140" y1="712" x2="1140" y2="686"/><line x1="1160" y1="712" x2="1160" y2="680"/><line x1="1210" y1="712" x2="1210" y2="684"/><line x1="1230" y1="712" x2="1230" y2="690"/></g>
+
+ <!-- RIVER -->
+ <path d="M470 540 Q520 640 640 690 Q900 760 1160 720 Q1420 685 1560 700 Q1660 706 1740 696"
+       fill="none" stroke="url(#river)" stroke-width="34" stroke-linecap="round"/>
+ <path d="M470 540 Q520 640 640 690 Q900 760 1160 720 Q1420 685 1560 700 Q1660 706 1740 696"
+       fill="none" stroke="#cdeefb" stroke-width="6" class="river-hi" opacity=".8"/>
+ <!-- waterfall off the mountain -->
+ <g stroke="#e2f6fd" stroke-width="3" stroke-linecap="round" opacity=".75">
+  <line class="rain-l" x1="486" y1="548" x2="484" y2="580" style="animation-delay:0s"/>
+  <line class="rain-l" x1="502" y1="562" x2="500" y2="594" style="animation-delay:.45s"/>
+  <line class="rain-l" x1="516" y1="578" x2="514" y2="610" style="animation-delay:.9s"/>
+ </g>
+ <ellipse cx="590" cy="682" rx="52" ry="13" fill="#eaf6fb" opacity=".2"/>
+
+ <!-- RESERVOIR + DAM -->
+ <path id="reservoir" d="M1230 700 Q1350 682 1470 690 L1470 726 Q1350 732 1230 724 Z" fill="#3f9fc0" opacity=".9"/>
+ <path d="M1470 654 L1512 654 L1524 764 L1458 764 Z" fill="url(#dam)"/>
+ <rect x="1465" y="650" width="63" height="12" rx="3" fill="#d2d8dc"/>
+ <g stroke="#828c92" stroke-width="2.5" opacity=".6"><line x1="1480" y1="674" x2="1472" y2="756"/><line x1="1502" y1="674" x2="1510" y2="756"/></g>
+ <path d="M1516 692 q12 34 6 66" stroke="#bfe4f2" stroke-width="5" fill="none" opacity=".7"/>
+
+ <!-- OCEAN -->
+ <path d="M1700 690 Q1900 672 2400 690 L2400 1200 L1700 1200 Z" fill="url(#ocean)"/>
+ <!-- sun glint reflection on the water -->
+ <path class="glint" d="M1990 694 Q2070 900 2035 1160 Q2110 900 2150 694 Z" fill="#ffe6ad" opacity=".16"/>
+ <g class="wave-l" stroke="#8fd7e6" stroke-width="5" stroke-linecap="round" opacity=".55">
+  <path d="M1770 752 q40 -16 80 0 t80 0 t80 0 t80 0 t80 0" fill="none"/>
+  <path d="M1980 812 q40 -16 80 0 t80 0 t80 0 t80 0 t80 0" fill="none"/>
+  <path d="M1810 872 q40 -16 80 0 t80 0 t80 0 t80 0 t80 0" fill="none"/>
+  <path d="M1950 940 q40 -16 80 0 t80 0 t80 0 t80 0 t80 0" fill="none"/>
+ </g>
+ <g class="cloud-b" stroke="#aee0ec" stroke-width="4" stroke-linecap="round" opacity=".35">
+  <path d="M1740 792 q34 -12 68 0 t68 0 t68 0" fill="none"/>
+  <path d="M2060 1000 q34 -12 68 0 t68 0 t68 0" fill="none"/>
+ </g>
+ <!-- caustics (light dancing on the water) -->
+ <g class="caustics" stroke="#e2f7ff" stroke-width="2.5" fill="none" opacity=".2">
+  <path d="M1770 1010 q26 -12 52 0 t52 0 t52 0 t52 0 t52 0"/>
+  <path d="M2020 1085 q26 -12 52 0 t52 0 t52 0 t52 0 t52 0"/>
+  <path d="M1840 1150 q26 -12 52 0 t52 0 t52 0 t52 0 t52 0"/>
+ </g>
+
+ <!-- VAPOR -->
+ <g fill="#dff1f6">
+  ${[1860,1950,2040,2130].map((x,i)=>`<ellipse class="vapor" cx="${x}" cy="700" rx="13" ry="18" opacity=".5" style="animation-delay:${(i*0.9).toFixed(1)}s"/>`).join('')}
+ </g>
+</svg>`;
+</script>
+
+<script>
+/* scenes */
+const SCENES=[
+ { id:"overview", align:"center", accent:"#9db4c0", fx:"motes", cam:{fx:0.5,fy:0.5,fw:1.0,fh:1.0},
+   eyebrow:"The whole cycle · one world",
+   title:'One world, <em>always moving</em>.',
+   lede:["Everything you see is a single connected system — ocean, sky, mountains, rivers and the hidden water underground.",
+         "Scroll or swipe, and we'll follow one drop through all of it."],
+   narr:"What you're looking at is the entire water cycle in one place — the ocean, the sky, the mountains, the rivers, and the water hidden underground. It's all one connected system. Let's shrink down, become a single drop, and travel through the whole thing." },
+ { id:"ocean", align:"right", accent:"#5fc7d9", fx:"spark", cam:{fx:0.86,fy:0.66,fw:0.34,fh:0.42},
+   eyebrow:"Reservoir 01 · The Ocean",
+   title:'It begins in the <em>sea</em>.',
+   lede:["Our drop starts here, in the ocean — the engine that holds about 96.5% of all the water on Earth.",
+         "It has rested in the deep for thousands of years. Then the Sun goes to work."],
+   chips:[["Holds","96.5% of Earth's water"],["Residence","~3,200 years"]],
+   narr:"Every journey through the water cycle begins in the same place — the ocean. It holds about ninety-six and a half percent of all the water on our planet, and a single molecule can rest in the deep for thousands of years before it ever moves. But the Sun is about to change everything.",
+   deep:{k:"The Ocean",term:"the planet's dominant reservoir",data:[["Share of all water","96.5%"],["Avg. residence","~3,200 yr"],["Volume","~1.3 billion km³"],["Role","stores & releases heat"]],body:["The ocean is the largest reservoir in the hydrologic cycle, and because water has an enormous heat capacity it also stores solar energy and moderates global climate.","Residence time — how long a molecule stays in a reservoir — is one of the most important ideas here. In the deep ocean it is measured in millennia."]} },
+ { id:"evap", align:"left", accent:"#f2b45a", fx:"rise", cam:{fx:0.85,fy:0.26,fw:0.38,fh:0.44},
+   eyebrow:"Process 02 · Evaporation",
+   title:'The Sun <em>lifts</em> it up.',
+   lede:["Solar energy breaks the drop free of the water below. It absorbs latent heat and rises as invisible vapor.",
+         "Plants add their own water through leaves — together, evapotranspiration."],
+   chips:[["Ocean evaporation","~434,000 km³/yr"],["Energy","latent heat"]],
+   narr:"Sunlight pours energy into the surface until our drop breaks free and rises as invisible water vapor. This is evaporation. The energy it carries away is called latent heat — the same heat that will later build storms. On land, plants add their own water through transpiration, and together we call the whole thing evapotranspiration.",
+   deep:{k:"Evaporation",term:"liquid → vapor, powered by the Sun",data:[["Ocean flux","~434,000 km³/yr"],["Land (ET)","~71,000 km³/yr"],["Driver","solar / latent heat"],["Direction","surface → sky"]],body:["Each gram of water absorbs roughly 2,260 joules of latent heat as it vaporizes — energy hidden in the vapor and released again when it condenses. The water cycle is really an energy cycle in disguise.","Evapotranspiration links the water cycle to the carbon cycle and to every ecosystem on land."]} },
+ { id:"cond", align:"left", accent:"#bcd6df", fx:"motes", cam:{fx:0.49,fy:0.20,fw:0.42,fh:0.36},
+   eyebrow:"Process 03 · Condensation",
+   title:'High up, it <em>gathers</em>.',
+   lede:["As the vapor rises it cools. At the dew point it condenses onto tiny particles — condensation nuclei.",
+         "Millions of droplets together become a cloud."],
+   chips:[["Atmosphere holds","~12,900 km³"],["Residence","~9 days"]],
+   narr:"As our drop rises, the air around it gets colder, until it reaches the dew point and condenses back into liquid — clinging to a tiny speck of dust or salt called a condensation nucleus. Millions of these droplets together form a cloud. And here's the surprise: after thousands of years in the ocean, our drop will spend only about nine days in the sky.",
+   deep:{k:"Condensation",term:"vapor → liquid on a nucleus",data:[["Atmosphere stores","~12,900 km³"],["Share of water","~0.001%"],["Residence","~9 days"],["Needs","condensation nuclei"]],body:["Condensation releases the latent heat that evaporation stored — warming the air, driving it to rise, and powering everything from showers to hurricanes.","The atmosphere holds a tiny fraction of Earth's water, yet cycles it incredibly fast — which is why weather changes day to day while the ocean barely changes in a lifetime."]} },
+ { id:"precip", align:"left", accent:"#7fbfe0", fx:"rain", cam:{fx:0.47,fy:0.40,fw:0.40,fh:0.46},
+   eyebrow:"Process 04 · Precipitation",
+   title:'And it <em>falls</em>.',
+   lede:["Droplets collide and grow until the air can't hold them. Gravity wins.",
+         "Our drop returns as rain — about 505,000 km³ falls worldwide each year."],
+   chips:[["Global precipitation","~505,000 km³/yr"],["Over land","~21%"]],
+   narr:"The droplets collide and merge until they're too heavy for the air to hold, and they fall — as rain, snow, sleet, or hail. This is precipitation, the moment water returns to Earth. About five hundred thousand cubic kilometers fall every year, but nearly four-fifths of it lands right back on the ocean. Our drop, though, is headed for land.",
+   deep:{k:"Precipitation",term:"the return to Earth's surface",data:[["Global total","~505,000 km³/yr"],["Onto oceans","~79%"],["Onto land","~21%"],["Forms","rain · snow · hail"]],body:["Precipitation balances evaporation globally — what goes up must come down — but not evenly. The gap between where rain falls and where it evaporates is what creates deserts, rainforests, and every watershed between.","On land, precipitation splits three ways: it runs off, it infiltrates, or it is stored."]} },
+ { id:"runoff", align:"left", accent:"#6fd0c4", fx:"flow", cam:{fx:0.28,fy:0.55,fw:0.34,fh:0.42},
+   eyebrow:"Process 05 · Runoff & Streamflow",
+   title:'It races <em>downhill</em>.',
+   lede:["Landing on saturated soil, the drop flows across the surface — a trickle, then a stream, then a river.",
+         "Every drop in a watershed drains toward the same place: the sea."],
+   chips:[["Rivers hold","~2,120 km³"],["River residence","~2–6 months"]],
+   narr:"Landing on ground that's already saturated, our drop flows across the surface as runoff. It joins a trickle, then a stream, then a river. Everything in a watershed drains toward the same low point, so our drop is now part of a moving system that carries not just water but sediment and nutrients — connecting the mountains to the sea.",
+   deep:{k:"Surface Runoff",term:"water moving over land into rivers",data:[["Rivers store","~2,120 km³"],["Residence","~2–6 months"],["Carries","sediment · nutrients"],["Drains to","oceans & lakes"]],body:["Runoff is the visible, fast lane of the water cycle. A watershed — all the land draining to one outlet — organizes this flow, which is why a river's health depends on all the land around it.","Rivers are the conveyor belts that move carbon, nitrogen and phosphorus from continents to oceans."]} },
+ { id:"infil", align:"left", accent:"#c9a36a", fx:"sink", cam:{fx:0.5,fy:0.82,fw:0.44,fh:0.34},
+   eyebrow:"Process 06 · Infiltration & Groundwater",
+   title:'Or it sinks <em>underground</em>.',
+   lede:["Some drops soak down through soil and rock — infiltration — into saturated layers of stone called aquifers.",
+         "Down here, water can wait for millennia."],
+   chips:[["Groundwater","~30% of freshwater"],["Residence","weeks → 10,000+ yr"]],
+   narr:"But some of our drop takes a slower road. Instead of running off, it soaks down through soil and rock — a process called infiltration — until it reaches an aquifer, a layer of saturated stone deep underground. Here, water can wait for an astonishingly long time. Some groundwater you could pump today has been down there since before the first cities were ever built.",
+   deep:{k:"Groundwater",term:"water stored in aquifers",data:[["Share of freshwater","~30%"],["Residence","weeks–10,000+ yr"],["Recharge","infiltration"],["Discharge","springs & wells"]],body:["Groundwater is the cycle's great buffer — feeding springs, sustaining rivers in droughts, and supplying drinking water for billions. It moves through pore spaces incredibly slowly.","Because aquifers recharge so slowly, water pumped out faster than it seeps back is effectively being mined."]} },
+ { id:"ice", align:"left", accent:"#a9d8e6", fx:"snow", cam:{fx:0.15,fy:0.33,fw:0.34,fh:0.44},
+   eyebrow:"Reservoir 07 · Ice & Snow",
+   title:'Some drops <em>freeze</em>.',
+   lede:["High on the peaks, precipitation falls as snow and compresses into ice — the cryosphere.",
+         "It holds most of Earth's fresh water, for the longest time of all."],
+   chips:[["Ice & glaciers","~1.7% of all water"],["Freshwater held","~68%"]],
+   narr:"In the coldest places — the high mountains and the poles — our drop might fall as snow and become part of a glacier. This is the cryosphere, and it holds about sixty-eight percent of all the fresh water on Earth, frozen and locked away for the longest time of any reservoir. Ice can even skip being liquid altogether, turning straight into vapor through a process called sublimation.",
+   deep:{k:"The Cryosphere",term:"frozen water storage",data:[["Share of all water","~1.7%"],["Of freshwater","~68%"],["Residence","up to ~800,000 yr"],["Escape","sublimation"]],body:["Glaciers and ice sheets are the planet's long-term freshwater savings account — Antarctic ice can hold a molecule for hundreds of thousands of years.","It is also the cycle's most sensitive climate indicator: as ice melts, water shifts from this slow reservoir into fast ones, raising sea level and speeding the whole cycle up."]} },
+ { id:"impact", align:"left", accent:"#e8674c", fx:"embers", cam:{fx:0.61,fy:0.58,fw:0.34,fh:0.42},
+   eyebrow:"Process 08 · Human Impact",
+   title:'And then, <em>us</em>.',
+   lede:["We dam more than half the world's major rivers, pump aquifers faster than they refill, and warm the air.",
+         "For every 1°C of warming, the air holds about 7% more water vapor — intensifying the whole cycle."],
+   chips:[["Groundwater","mined faster than recharge"],["Per +1°C","~7% more vapor"]],
+   narr:"And then there's us. We dam most of the world's great rivers, like this one. We pump groundwater faster than it can recharge, draining aquifers that took millennia to fill. And we warm the air — and because warmer air holds about seven percent more water vapor for every degree Celsius, we're intensifying the whole cycle: heavier floods, deeper droughts, stronger storms. The same cycle our drop just traveled is now moving faster, and less predictably, because of us.",
+   deep:{k:"Human Impact",term:"how we're rewiring the cycle",data:[["Major rivers dammed",">50%"],["Groundwater","being mined"],["Per +1°C vapor","~7%"],["Result","floods & droughts"]],body:["Dams, irrigation and groundwater pumping have physically rerouted the water cycle; the Clausius–Clapeyron relation means a warmer atmosphere holds roughly 7% more moisture per degree.","Wet regions get wetter, dry regions drier, and storms more intense — the cycle we just followed, accelerating."]} },
+];
+const N=SCENES.length;
+</script>
+
+<script>
+/* build deck + hud */
+const deck=document.getElementById('deck');
+const slideEls=SCENES.map((s,idx)=>{
+  const el=document.createElement('div');
+  el.className='slide'; el.dataset.scene=idx; el.dataset.align=s.align;
+  el.style.setProperty('--accent',s.accent);
+  const chips=(s.chips||[]).map(c=>`<span class="chip"><b>${c[1]}</b> ${c[0]}</span>`).join('');
+  const ledes=(s.lede||[]).map(l=>`<p class="lede">${l}</p>`).join('');
+  let extra='';
+  if(s.deep) extra=`<button class="explore" data-deep="${idx}">Explore the science <span class="arrow" aria-hidden="true">→</span></button>`;
+  if(s.id==='impact') extra+=`<div class="toggle-wrap"><button class="switch impactSwitch" role="switch" aria-checked="false" aria-label="Toggle human impact"></button><span class="switch-label">Show: <b class="impactState">Natural cycle</b></span></div>`;
+  el.innerHTML=`<div class="panel"><div class="eyebrow"><span>${s.eyebrow}</span><span class="rule"></span></div><h2>${s.title}</h2><div class="body">${ledes}<div class="stat-row">${chips}</div>${extra}</div><button class="mintoggle" aria-label="Toggle details"></button></div>`;
+  deck.appendChild(el); return el;
+});
+// wrap words so the title can animate in
+function splitWords(h2){
+  if(!h2) return;
+  const out=document.createDocumentFragment(); let wi=0;
+  const addWords=(text,parent)=>{ text.split(/(\s+)/).forEach(tok=>{
+    if(tok==='') return;
+    if(/^\s+$/.test(tok)){parent.appendChild(document.createTextNode(tok));}
+    else{const sp=document.createElement('span');sp.className='word';sp.textContent=tok;sp.style.transitionDelay=(0.22+wi*0.075).toFixed(3)+'s';parent.appendChild(sp);wi++;}
+  });};
+  [...h2.childNodes].forEach(node=>{
+    if(node.nodeType===3){ addWords(node.textContent,out); }
+    else if(node.nodeName==='EM'){ const em=document.createElement('em'); addWords(node.textContent,em); out.appendChild(em); }
+    else { out.appendChild(node.cloneNode(true)); }
+  });
+  h2.innerHTML=''; h2.appendChild(out);
+}
+slideEls.forEach(el=>splitWords(el.querySelector('h2')));
+const hud=document.getElementById('hud');
+SCENES.forEach((s,i)=>{const b=document.createElement('button');b.className='dot';b.dataset.go=i;b.setAttribute('aria-label','Go to '+s.id);hud.appendChild(b);});
+const dots=[...hud.children];
+</script>
+
+<script>
+/* camera */
+const world=document.getElementById('world');
+let curStop=SCENES[0].cam, curAlign='center', started=false, baseTx=0, baseTy=0, baseScale=1;
+function applyCam(stop,animate){
+  const W=innerWidth,H=innerHeight;
+  const fh=stop.fh||stop.fw;
+  const scale=Math.max(W/(stop.fw*WORLD_W), H/(fh*WORLD_H));
+  const sw=WORLD_W*scale, sh=WORLD_H*scale;
+  const mob=W<=640;
+  // keep the subject clear of the text box
+  const bx = mob?0.5 : (curAlign==='left'?0.66 : curAlign==='right'?0.34 : 0.5);
+  const by = mob?0.33 : 0.47;
+  let tx=W*bx - stop.fx*WORLD_W*scale;
+  let ty=H*by - stop.fy*WORLD_H*scale;
+  tx=Math.min(0,Math.max(W-sw,tx));
+  ty=Math.min(0,Math.max(H-sh,ty));
+  baseTx=tx; baseTy=ty; baseScale=scale;
+  world.style.transition = animate ? 'transform 1.2s cubic-bezier(.32,.02,.18,1.03)' : 'none';
+  world.style.transform=`translate3d(${tx.toFixed(1)}px,${ty.toFixed(1)}px,0) scale(${scale.toFixed(4)})`;
+}
+applyCam(curStop,false);
+addEventListener('resize',()=>applyCam(curStop,false));
+</script>
+
+<script>
+/* ambient particles */
+const cvs=document.getElementById('fx'), ctx=cvs.getContext('2d');
+let W2,H2,DPR2, parts=[], fxMode='motes', fxColor='#cfe0e8', fxRunning=false;
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+function fxResize(){DPR2=Math.min(devicePixelRatio||1,1.5);W2=cvs.width=innerWidth*DPR2;H2=cvs.height=innerHeight*DPR2;cvs.style.width=innerWidth+'px';cvs.style.height=innerHeight+'px';}
+fxResize(); addEventListener('resize',fxResize);
+function seedFx(){parts=[];const n=reduce?18:56;for(let i=0;i<n;i++)parts.push({x:Math.random()*W2,y:Math.random()*H2,r:(Math.random()*1.8+0.6)*DPR2,a:Math.random()*.4+.15,ph:Math.random()*6.28,tw:Math.random()});}
+seedFx();
+const FXC={motes:'#cfe0e8',spark:'#bfe8f2',rise:'#ffe6c0',rain:'#bfe4f2',flow:'#cdeefb',sink:'#d8c69a',snow:'#ffffff',embers:'#f2a65a'};
+function setFxMode(m){fxMode=m;fxColor=FXC[m]||'#cfe0e8';}
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;}
+let fxFrame=0;
+function fxStep(t){
+  if(!fxRunning) return;
+  requestAnimationFrame(fxStep);
+  if(document.body.classList.contains('moving') && (fxFrame++ & 1)) return; // throttle during camera moves
+  ctx.clearRect(0,0,W2,H2);
+  ctx.globalCompositeOperation=(fxMode==='spark'||fxMode==='embers'||fxMode==='rise')?'lighter':'source-over';
+  const sp=reduce?0.4:1;
+  for(const p of parts){
+    switch(fxMode){
+      case 'motes': p.x+=Math.sin(t/3000+p.ph)*0.25*DPR2*sp; p.y+=(Math.cos(t/3600+p.ph)*0.12-0.05)*DPR2*sp; break;
+      case 'spark': p.x+=Math.sin(t/1100+p.ph)*0.4*DPR2*sp; p.y+=0.12*DPR2*sp; p.a=0.15+Math.abs(Math.sin(t/700+p.ph))*0.4; break;
+      case 'rise':  p.y-=(0.6+p.r*0.2)*DPR2*sp; p.x+=Math.sin(t/900+p.ph)*0.5*DPR2*sp; break;
+      case 'rain':  p.y+=(5+p.r)*DPR2*sp; p.x-=0.7*DPR2*sp; break;
+      case 'flow':  p.x+=(2.2+p.r*0.4)*DPR2*sp; p.y+=0.4*DPR2*sp; break;
+      case 'sink':  p.y+=(0.9+p.r*0.2)*DPR2*sp; break;
+      case 'snow':  p.y+=(1+p.r*0.4)*DPR2*sp; p.x+=Math.sin(t/1300+p.ph)*0.9*DPR2*sp; break;
+      case 'embers':p.y-=(0.5+p.r*0.2)*DPR2*sp; p.x+=Math.sin(t/700+p.ph)*0.6*DPR2*sp; break;
+    }
+    if(p.x<-10)p.x=W2+10; if(p.x>W2+10)p.x=-10; if(p.y<-10)p.y=H2+10; if(p.y>H2+10){p.y=-10;p.x=Math.random()*W2;}
+    if(fxMode==='rain'){ctx.strokeStyle=hexA(fxColor,p.a*0.8);ctx.lineWidth=p.r*0.7;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-1*DPR2,p.y+8*DPR2);ctx.stroke();}
+    else{ctx.fillStyle=hexA(fxColor,p.a);ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.fill();}
+  }
+}
+function startFx(){if(fxRunning)return;fxRunning=true;requestAnimationFrame(fxStep);}
+</script>
+
+<script>
+/* travelling drop + sky mood */
+const dropCv=document.getElementById('dropcv'), dctx=dropCv.getContext('2d');
+let dW,dH,dDPR;
+function dropResize(){dDPR=Math.min(devicePixelRatio||1,1.5);dW=dropCv.width=innerWidth*dDPR;dH=dropCv.height=innerHeight*dDPR;dropCv.style.width=innerWidth+'px';dropCv.style.height=innerHeight+'px';}
+dropResize(); addEventListener('resize',dropResize);
+let dropRAF=null;
+const FOCAL=SCENES.map(s=>({wx:s.cam.fx*WORLD_W, wy:s.cam.fy*WORLD_H}));
+function flyDrop(prev,next){
+  if(reduce) return;
+  cancelAnimationFrame(dropRAF);
+  const D=dDPR, A=FOCAL[prev]||FOCAL[next], B=FOCAL[next];
+  const accent=SCENES[next].accent, t0=performance.now(), dur=1080, trail=[];
+  function project(wx,wy){const m=new DOMMatrixReadOnly(getComputedStyle(world).transform);return {x:(m.a*wx+m.e)*D, y:(m.d*wy+m.f)*D};}
+  function frame(now){
+    const p=Math.min(1,(now-t0)/dur);
+    const e = p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; // ease the drop's path
+    const wx=A.wx+(B.wx-A.wx)*e, wy=A.wy+(B.wy-A.wy)*e;
+    const pt=project(wx,wy), x=pt.x, y=pt.y;
+    trail.push({x,y}); if(trail.length>22)trail.shift();
+    dctx.clearRect(0,0,dW,dH); dctx.globalCompositeOperation='lighter';
+    for(let i=0;i<trail.length;i++){const tp=trail[i],a=(i/trail.length)*0.5,r=(1.5+i*0.6)*D;dctx.fillStyle=hexA('#bfe8f8',a);dctx.beginPath();dctx.arc(tp.x,tp.y,r,0,6.283);dctx.fill();}
+    const g=dctx.createRadialGradient(x,y,0,x,y,30*D);g.addColorStop(0,'rgba(220,248,255,.95)');g.addColorStop(.4,hexA(accent,.55));g.addColorStop(1,'rgba(0,0,0,0)');
+    dctx.fillStyle=g;dctx.beginPath();dctx.arc(x,y,30*D,0,6.283);dctx.fill();
+    dctx.fillStyle='rgba(242,253,255,.96)';dctx.beginPath();dctx.arc(x,y,5.5*D,0,6.283);dctx.fill();
+    if(p<1){dropRAF=requestAnimationFrame(frame);} else {const f=project(B.wx,B.wy);ripple(f.x,f.y,accent);}
+  }
+  dropRAF=requestAnimationFrame(frame);
+}
+function ripple(x,y,accent){
+  const t0=performance.now(),dur=600,D=dDPR;
+  function fr(now){const p=Math.min(1,(now-t0)/dur);dctx.clearRect(0,0,dW,dH);dctx.globalCompositeOperation='lighter';
+    dctx.strokeStyle=hexA(accent,(1-p)*0.55);dctx.lineWidth=3*D;dctx.beginPath();dctx.arc(x,y,(6+p*72)*D,0,6.283);dctx.stroke();
+    dctx.fillStyle=hexA('#eafaff',(1-p)*0.8);dctx.beginPath();dctx.arc(x,y,5*D*(1-p),0,6.283);dctx.fill();
+    if(p<1){requestAnimationFrame(fr);} else {dctx.clearRect(0,0,dW,dH);}
+  }
+  requestAnimationFrame(fr);
+}
+const SKY={
+ overview:'linear-gradient(180deg, rgba(130,170,205,.16), rgba(20,42,72,.28))',
+ ocean:'linear-gradient(180deg, rgba(95,155,205,.28), rgba(10,52,92,.36))',
+ evap:'linear-gradient(180deg, rgba(255,201,120,.40), rgba(255,150,90,.16))',
+ cond:'linear-gradient(180deg, rgba(205,222,236,.34), rgba(150,182,212,.16))',
+ precip:'linear-gradient(180deg, rgba(120,142,172,.40), rgba(48,68,98,.32))',
+ runoff:'linear-gradient(180deg, rgba(140,205,192,.30), rgba(38,112,112,.28))',
+ infil:'linear-gradient(180deg, rgba(205,162,112,.32), rgba(88,58,34,.34))',
+ ice:'linear-gradient(180deg, rgba(205,228,242,.40), rgba(120,162,202,.22))',
+ impact:'linear-gradient(180deg, rgba(255,150,90,.36), rgba(120,30,20,.40))'
+};
+const skytintEl=document.getElementById('skytint');
+function setSky(id){skytintEl.style.background=SKY[id]||SKY.overview;}
+</script>
+
+<script>
+/* narration / audio */
+const RECORDINGS={0:"audio/1.mp3",1:"audio/2.mp3",2:"audio/3.mp3",3:"audio/4.mp3",4:"audio/5.mp3",5:"audio/6.mp3",6:"audio/7.mp3",7:"audio/8.mp3",8:"audio/9.mp3"};
+let audioOn=false, audioPlaying=true, currentAudio=null, synthVoice=null, narrToken=0, fallbackTimer=null, narrating=false;
+const audiobtn=document.getElementById('audiobtn');
+function pickVoice(){const v=speechSynthesis.getVoices();synthVoice=v.find(x=>/en[-_]US/i.test(x.lang)&&/male|daniel|alex|fred/i.test(x.name))||v.find(x=>/en/i.test(x.lang))||v[0];}
+if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice;}
+function stopNarration(){clearTimeout(fallbackTimer);if(currentAudio){currentAudio.onended=null;currentAudio.pause();currentAudio=null;}if('speechSynthesis' in window)speechSynthesis.cancel();}
+function narrate(i){
+  const s=SCENES[i]; if(!s||!s.narr) return;
+  if(!audioOn||!audioPlaying) return;
+  stopNarration();
+  const my=++narrToken;
+  // advance when the clip finishes
+  const done=()=>{ if(my!==narrToken) return; clearTimeout(fallbackTimer); narrating=false; if(audioOn && audioPlaying) goTo(idx+1); };
+  if(RECORDINGS[i]){
+    currentAudio=new Audio(RECORDINGS[i]);currentAudio.onended=done;
+    currentAudio.addEventListener('loadedmetadata',()=>{clearTimeout(fallbackTimer);fallbackTimer=setTimeout(done,(currentAudio.duration||30)*1000+4000);});
+    currentAudio.play().catch(()=>{narrating=false;}); // don't trap the user if autoplay fails
+  }
+  else if('speechSynthesis' in window){
+    const u=new SpeechSynthesisUtterance(s.narr);u.voice=synthVoice;u.rate=0.95;u.pitch=0.98;u.onend=done;speechSynthesis.speak(u);
+    // fallback if speech stalls
+    const words=s.narr.split(/\s+/).length;
+    fallbackTimer=setTimeout(done, Math.min(42000, words*430+6000));
+  }
+}
+function setMuted(m){audioPlaying=!m;audiobtn.classList.toggle('muted',m);document.getElementById('audiolabel').textContent=m?'Paused':'Playing';if(m){stopNarration();}else{narrate(idx);}}
+audiobtn.addEventListener('click',()=>setMuted(audioPlaying));
+</script>
+
+<script>
+/* deck controller */
+const topbar=document.getElementById('topbar'), scrim=document.getElementById('scrim'), modal=document.getElementById('modal');
+let idx=0, busy=false, minTimer=null, moveT=null;
+const READ_MS=5200;
+const IMPACT_I=SCENES.findIndex(s=>s.id==='impact');
+function rgba(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;}
+function setGrade(s,human){
+  if(human){scrim.style.background='radial-gradient(120% 120% at 30% 45%, rgba(232,103,76,.15) 22%, rgba(60,12,8,.62) 100%)';return;}
+  const tint=rgba(s.accent,0.10);
+  scrim.style.background=`radial-gradient(95% 95% at 50% 42%, ${tint} 0%, transparent 55%), radial-gradient(120% 120% at 30% 45%, transparent 46%, rgba(3,10,17,.5) 100%)`;
+}
+function scheduleMin(i){
+  clearTimeout(minTimer);
+  minTimer=setTimeout(()=>{
+    if(idx===i){const p=slideEls[i].querySelector('.panel'); if(p&&!p.matches(':hover'))p.classList.add('min');}
+  },READ_MS);
+}
+function resetImpact(scene){
+  const res=world.querySelector('#reservoir'); if(res)res.setAttribute('opacity','0.9');
+  document.querySelectorAll('.impactSwitch').forEach(s=>s.setAttribute('aria-checked','false'));
+  document.querySelectorAll('.impactState').forEach(s=>s.textContent='Natural cycle');
+  setGrade(scene,false);
+}
+function countUp(panel){
+  if(!panel) return;
+  panel.querySelectorAll('.chip b').forEach(b=>{
+    const full=b.dataset.full||b.textContent; b.dataset.full=full;
+    const m=full.match(/^(~?)([\d,]+(?:\.\d+)?)(.*)$/);
+    if(!m){b.textContent=full;return;}
+    const pre=m[1], suf=m[3], target=parseFloat(m[2].replace(/,/g,'')), dec=(m[2].split('.')[1]||'').length;
+    if(isNaN(target)){b.textContent=full;return;}
+    const t0=performance.now(),dur=1000;
+    (function fr(now){const p=Math.min(1,(now-t0)/dur),e=1-Math.pow(1-p,3),v=target*e;
+      b.textContent=pre+(dec?v.toFixed(dec):Math.round(v).toLocaleString('en-US'))+suf;
+      if(p<1)requestAnimationFrame(fr); else b.textContent=full;})(performance.now());
+  });
+}
+function goTo(i){
+  i=((i%N)+N)%N;
+  const prev=idx;
+  const dir = i===((prev+1)%N)?1 : i===((prev-1+N)%N)?-1 : (i>=prev?1:-1);
+  const s=SCENES[i];
+  slideEls.forEach((el,k)=>el.classList.toggle('active',k===i));
+  idx=i; curAlign=s.align; narrating=true; // no skipping mid-clip
+  document.body.classList.add('moving');
+  clearTimeout(moveT); moveT=setTimeout(()=>document.body.classList.remove('moving'),1350);
+  applyCam(s.cam,true);
+  dots.forEach((d,k)=>d.classList.toggle('active',k===i));
+  setFxMode(s.fx);
+  setSky(s.id);
+  flyDrop(prev,i);
+  narrate(i);
+  if(s.id!=='impact') resetImpact(s); else setGrade(s,false);
+  const p=slideEls[i].querySelector('.panel'); if(p)p.classList.remove('min');
+  countUp(p);
+  scheduleMin(i);
+  topbar.style.width=(((i+1)/N)*100)+'%';
+}
+function nav(dir){ if(!started||busy||narrating) return; busy=true; setTimeout(()=>busy=false,760); goTo(idx+dir); }
+
+/* wheel — one gesture = one slide (unlock only after the gesture settles) */
+let wheelIdle=null;
+addEventListener('wheel',e=>{
+  if(modal.classList.contains('open')) return; // allow the popup to scroll
+  e.preventDefault();
+  if(!started || narrating) return; // wait for the clip
+  clearTimeout(wheelIdle); wheelIdle=setTimeout(()=>{busy=false;},480);
+  if(busy || Math.abs(e.deltaY)<8) return;
+  busy=true; goTo(idx+(e.deltaY>0?1:-1));
+},{passive:false});
+
+/* touch — one swipe = one slide */
+let tY=null;
+addEventListener('touchstart',e=>{tY=e.touches[0].clientY;},{passive:true});
+addEventListener('touchend',e=>{
+  if(tY==null||modal.classList.contains('open'))return;
+  const dy=tY-e.changedTouches[0].clientY; tY=null;
+  if(Math.abs(dy)<42)return;
+  nav(dy>0?1:-1);
+});
+
+/* keys */
+addEventListener('keydown',e=>{
+  if(modal.classList.contains('open'))return;
+  if(['ArrowDown','PageDown',' ','Spacebar'].includes(e.key)){e.preventDefault();nav(1);}
+  else if(['ArrowUp','PageUp'].includes(e.key)){e.preventDefault();nav(-1);}
+});
+
+/* panel hover / tap / toggle */
+slideEls.forEach((sec,i)=>{
+  const p=sec.querySelector('.panel');
+  p.addEventListener('pointerenter',()=>{clearTimeout(minTimer);p.classList.remove('min');});
+  p.addEventListener('pointerleave',()=>{if(i===idx)scheduleMin(i);});
+  p.addEventListener('click',e=>{if(p.classList.contains('min')&&!e.target.closest('.mintoggle')){clearTimeout(minTimer);p.classList.remove('min');scheduleMin(i);}});
+  const mt=sec.querySelector('.mintoggle');
+  if(mt)mt.addEventListener('click',()=>{clearTimeout(minTimer);p.classList.toggle('min');if(!p.classList.contains('min'))scheduleMin(i);});
+});
+hud.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b&&started&&!narrating)goTo(+b.dataset.go);});
+</script>
+
+<script>
+/* intro / modal / impact */
+const intro=document.getElementById('intro');
+function launch(withSound){
+  audioOn=withSound; started=true;
+  intro.classList.add('gone');
+  hud.classList.add('show'); topbar.classList.add('show');
+  if(withSound){audiobtn.classList.add('show');if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');speechSynthesis.speak(u);}}
+  startFx();
+  setTimeout(()=>goTo(0),140);
+}
+document.getElementById('beginBtn').addEventListener('click',()=>launch(true));
+
+function openDeep(i){
+  const s=SCENES[i]; if(!s||!s.deep) return; const d=s.deep;
+  document.getElementById('modalK').textContent=s.eyebrow.split('·').pop().trim();
+  document.getElementById('modalTitle').textContent=d.k;
+  document.getElementById('modalTerm').textContent=d.term;
+  document.querySelector('#modal .card').style.setProperty('--accent',s.accent);
+  document.getElementById('modalData').innerHTML=d.data.map(x=>`<div><div class="lab">${x[0]}</div><div class="val">${x[1]}</div></div>`).join('');
+  document.getElementById('modalBody').innerHTML=d.body.map(p=>`<p>${p}</p>`).join('');
+  modal.classList.add('open');
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-deep]');if(b)openDeep(+b.dataset.deep);});
+document.getElementById('modalClose').addEventListener('click',()=>modal.classList.remove('open'));
+modal.addEventListener('click',e=>{if(e.target===modal)modal.classList.remove('open');});
+addEventListener('keydown',e=>{if(e.key==='Escape')modal.classList.remove('open');});
+
+/* human-impact toggle */
+document.addEventListener('click',e=>{
+  const sw=e.target.closest('.impactSwitch'); if(!sw) return;
+  const human=sw.getAttribute('aria-checked')!=='true';
+  document.querySelectorAll('.impactSwitch').forEach(s=>s.setAttribute('aria-checked',human));
+  document.querySelectorAll('.impactState').forEach(s=>s.textContent=human?'Human-altered':'Natural cycle');
+  const res=world.querySelector('#reservoir'); if(res)res.setAttribute('opacity',human?'0.25':'0.9');
+  setGrade(SCENES[IMPACT_I],human);
+});
+</script>
+
+<script>
+/* cursor parallax (depth) */
+if(matchMedia('(hover:hover) and (pointer:fine)').matches && !matchMedia('(prefers-reduced-motion:reduce)').matches){
+  let mx=0,my=0,cx=0,cy=0;
+  addEventListener('pointermove',e=>{mx=e.clientX/innerWidth-0.5;my=e.clientY/innerHeight-0.5;});
+  (function pLoop(){
+    cx+=(mx-cx)*0.05; cy+=(my-cy)*0.05;
+    if(started && !document.body.classList.contains('moving')){
+      const W=innerWidth,H=innerHeight,sw=WORLD_W*baseScale,sh=WORLD_H*baseScale;
+      let nx=baseTx - cx*18, ny=baseTy - cy*13;
+      nx=Math.min(0,Math.max(W-sw,nx)); ny=Math.min(0,Math.max(H-sh,ny));
+      world.style.transition='none';
+      world.style.transform=`translate3d(${nx.toFixed(1)}px,${ny.toFixed(1)}px,0) scale(${baseScale.toFixed(4)})`;
+    }
+    requestAnimationFrame(pLoop);
+  })();
+}
+</script>
